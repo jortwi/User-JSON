@@ -1,0 +1,261 @@
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User/JSON</title>
+
+    <!-- PicoCSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+    <!-- Additional colors for PicoCSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.colors.min.css" />
+    <!-- AI Foundry Library -->
+    <script src="./AI_Foundry_Library.js"></script>
+    <!-- API Keys -->
+    <!-- <script src="./keys.js"></script> -->
+    <!-- OOCSI Library -->
+    <!-- <script src="oocsi-web.min.js"></script> -->
+    <!-- CodeMirror -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/edit/closebrackets.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+
+    <!-- CodeMirror styling -->
+    <style>
+        .CodeMirror {
+            height: 50vh;
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="">
+
+
+        <div style="display: flex; justify-content: space-between ; align-items: center; margin: 0 4vw ">
+
+            <h1 style="margin: 0;">USER / JSON</h1>
+            <button id="switchDevModeButton" class="contrast" onclick="switchDevMode()">Switch
+                to User
+                Mode</button>
+        </div>
+
+
+    </header>
+    <main class="container">
+        <div hidden id="userView">
+            <button id="start" onclick="start()">Start</button>
+            <div id="show"></div>
+            <div role="group">
+                <input type="hidden" id="userInput" placeholder="write input" onkeydown="keyDown(event)"></input>
+                <button hidden id="btn">send</button>
+            </div>
+
+            <div>
+                <progress hidden id="progress" />
+            </div>
+        </div>
+        <div id="devView">
+            <button onclick="checkArray()">Check for errors</button>
+            <div id="showError"><br></div>
+
+            <textarea id="code" name="code">
+
+                </textarea>
+
+        </div>
+    </main>
+    <footer></footer>
+
+    <script>
+        // Initialize CodeMirror
+        const codeMirrorEditor = CodeMirror.fromTextArea(document.getElementById("code"), {
+            lineNumbers: true,
+            mode: "javascript",
+            autoCloseBrackets: true,
+        });
+
+
+
+        let devMode = true;
+
+        const initialMessages = [
+            {
+                role: "system",
+                content:
+                    "you are an animal expert, giving detailed explanations of animals",
+            },
+            {
+                role: "assistant",
+                content: "hi, what animal do you want to discuss?",
+            },
+            { role: "user", content: { type: "text", content: "input" } },
+            { role: "function", content: "textToImage" },
+            { role: "function", content: "imageToText" },
+            {
+                role: "assistant",
+                content: "Tell me about what kind of animals you like",
+            },
+            { role: "user", content: { type: "image", content: "input" } },
+            { role: "user", content: "What animals are similar to this?" },
+            { role: "function", content: "imageToText", },
+            { role: "assistant", content: "Thank you for this conversation!" }
+        ];
+
+        codeMirrorEditor.setValue(formatArrayAsJS(initialMessages))
+
+        const hashtable = {
+            textToText: foundry.textToText,
+            textToImage: foundry.textToImage,
+            textToSound: foundry.textToSound,
+            soundToText: foundry.soundToText,
+            stopRec: foundry.stopRec,
+            imageToText: foundry.imageToText,
+            fileSelector: foundry.fileSelector, //should this be available?
+            models: foundry.models,
+        };
+
+
+        async function run(array) {
+            try {
+                array = eval(codeMirrorEditor.getValue())
+
+            } catch {
+                document.querySelector('#show').insertAdjacentHTML('beforeend', `<p class="pico-color-red-500">System: An error occured</p>`)
+                return
+            }
+
+            const systemPrompt = array[0].role === "system" ? array[0].content : ""
+            const startCounter = array[0].role === "system" ? 1 : 0
+
+            let latestImage, latestSound, latestMessage
+
+            for (let i = startCounter; i < array.length; i++) {
+                if (array[i].role === "function") {
+                    document.querySelector('#progress').removeAttribute('hidden')
+                    let response = await hashtable[array[i].content]({ api_token, image: latestImage, file: latestSound, prompt: latestMessage, systemPrompt, logging: false, ...array[i] })
+                    document.querySelector('#progress').setAttribute('hidden', "")
+
+                    if (array[i].content === "textToImage") {
+                        latestImage = response
+                        document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>Assistant: </p><img src="${response}" />`)
+                    }
+                    else if (array[i].content === "textToSound") {
+                        latestSound = response
+                        document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>Assistant: </p><audio controls src="${response}" />`)
+                    } else if (array[i].content === "soundToText") {
+                    } else {
+                        document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>Assistant: ${response}</p>`)
+                        latestMessage = response
+                    }
+                }
+                else if (array[i].content.content === "input") {
+                    let msg = await waitForUserInput(array[i].content.type)
+                    // array[i].content.content = msg
+                    if (array[i].content.type === 'text') { latestMessage = msg; document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>${array[i].role}: ${msg}</p>`) }
+                    if (array[i].content.type === 'image') { latestImage = msg; document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>${array[i].role}:</p><img src="${msg}" />`) }
+                    if (array[i].content.type === 'sound' || array[i].content.type === 'audio') { latestSound = msg; document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>${array[i].role}:</p><audio controls src="${msg}" />`) }
+                } else {
+                    document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>${array[i].role}: ${array[i].content}</p>`)
+                    latestMessage = array[i].content
+                }
+                window.scrollTo(0, document.body.scrollHeight)
+            }
+        }
+
+        function waitForUserInput(type) {
+            return new Promise((resolve) => {
+                if (type === "text") {
+                    document.querySelector('#userInput').setAttribute('type', type) //show input
+                    document.querySelector('#btn').removeAttribute('hidden') //show button
+                    document.querySelector('#btn').onclick = async function () {
+                        resolve(document.querySelector('#userInput').value) //resolve
+                        document.querySelector('#btn').setAttribute('hidden', "") //remove button
+                        document.querySelector('#userInput').setAttribute('type', "hidden") //remove input
+                    }
+                }
+                else if (type === "image" || type === "audio" || type === "sound") {
+                    document.querySelector('#btn').removeAttribute("hidden")
+                    document.querySelector('#btn').onclick = async function () {
+                        let file = await foundry.fileSelector(type)
+                        resolve(file)
+                        document.querySelector('#btn').setAttribute('hidden', "")
+                    }
+                }
+
+
+            })
+        }
+
+        function start() {
+            document.querySelector('#start').innerHTML = 'Restart'
+            document.querySelector('#start').setAttribute('class', 'pico-background-red-500')
+            document.querySelector('#show').innerHTML = ""
+            document.querySelector('#userInput').value = ""
+            document.querySelector('#userInput').setAttribute('type', 'hidden')
+            document.querySelector('#btn').setAttribute('hidden', '')
+
+            run(initialMessages)
+        }
+
+        //Allow pressing enter to send input
+        function keyDown(event) {
+            if (event.key === 'Enter') {
+                document.querySelector('#btn').click()
+            }
+        }
+
+        function switchDevMode() {
+            if (devMode) {
+                document.querySelector('#devView').setAttribute('hidden', '')
+                document.querySelector('#userView').removeAttribute('hidden')
+                document.querySelector('#switchDevModeButton').innerHTML = 'Switch to Dev Mode'
+            } else {
+                document.querySelector('#userView').setAttribute('hidden', '')
+                document.querySelector('#devView').removeAttribute('hidden')
+                document.querySelector('#switchDevModeButton').innerHTML = 'Switch to User Mode'
+
+            }
+            devMode = !devMode
+        }
+
+        function formatArrayAsJS(array) {
+            function formatObject(obj) {
+                return `{
+      ${Object.entries(obj)
+                        .map(([key, value]) => {
+                            if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+                                return `${key}: ${formatObject(value)}`;
+                            } else if (typeof value === "string") {
+                                return `${key}: "${value}"`;
+                            } else {
+                                return `${key}: ${value}`;
+                            }
+                        })
+                        .join(",\n      ")}
+    }`;
+            }
+            return `[
+    ${array.map(formatObject).join(",\n    ")}
+  ];`;
+        }
+
+        function checkArray() {
+            try {
+                eval(codeMirrorEditor.getValue())
+                document.querySelector('#showError').innerHTML = '<p>No Error</p>'
+                return eval(codeMirrorEditor.getValue())
+            } catch (err) {
+                console.error(err)
+                document.querySelector('#showError').innerHTML = `<p class="pico-color-red-500">${err}</p>`
+            }
+        }
+
+
+
+    </script>
+</body>
+
+</html>
