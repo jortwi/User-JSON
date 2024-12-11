@@ -12,9 +12,9 @@
     <!-- AI Foundry Library -->
     <script src="./AI_Foundry_Library.js"></script>
     <!-- API Keys -->
-    <!-- <script src="./keys.js"></script> -->
+    <script src="./keys.js"></script>
     <!-- OOCSI Library -->
-    <!-- <script src="oocsi-web.min.js"></script> -->
+    <script src="oocsi-web.min.js"></script>
     <!-- CodeMirror -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/javascript/javascript.min.js"></script>
@@ -45,66 +45,101 @@
 
     </header>
     <main class="container">
-        <div hidden id="userView">
-            <button id="start" onclick="start()">Start</button>
-            <div id="show"></div>
-            <div role="group">
-                <input type="hidden" id="userInput" placeholder="write input" onkeydown="keyDown(event)"></input>
-                <button hidden id="btn">send</button>
+        <section>
+            <div hidden id="userView">
+                <button id="start" onclick="start()">Start</button>
+                <button hidden class="secondary" id="stop" onclick="stop()">Stop</button>
+                <div id="show"></div>
+                <div role="group">
+                    <input type="hidden" id="userInput" placeholder="write input" onkeydown="keyDown(event)"></input>
+                    <button hidden id="btn">send</button>
+                </div>
+
+                <div>
+                    <progress hidden id="progress" />
+                </div>
             </div>
+            <div id="devView">
+                <button class="pico-background-red-500" onclick="checkArray()">Check for errors</button>
+                <button onclick="addScript()">Add additional script</button>
+                <button class="contrast">Help</button>
+                <div id="showError"><br></div>
 
-            <div>
-                <progress hidden id="progress" />
+                <!-- <code style="margin: 10px">let array1 =</code> -->
+                <div role="group">
+                    <h3>Script Name: </h3>
+                    <input type="text" value="script0">
+
+                </div>
+                <textarea id="code" name="code">
+
+            </textarea>
+
             </div>
-        </div>
-        <div id="devView">
-            <button onclick="checkArray()">Check for errors</button>
-            <div id="showError"><br></div>
+        </section>
 
-            <textarea id="code" name="code">
-
-                </textarea>
-
-        </div>
+        <section>
+            <article>
+                <h3>How to use</h3>
+                <p>Create a basic messsage:</p>
+                <code>{ role: 'assistant', content: 'This is a basic message'},</code>
+                <p>Create an AI generated message:</p>
+                <code>{ role: 'function', content: 'textToText', messages: [steps({start: 0, end: 2, scriptName: 'script0'})]}</code>
+                <p>Ask for user input:</p>
+                <code>{ role: "user", content: {content: 'input', type: 'text'}}</code>
+                <p>Get part of the script:</p>
+                <code>steps({start: 0, end: 3, scriptName: 'script0'})</code>
+                <p>Get the content of a message, or user input:</p>
+                <code>content(1, 'script0')</code>
+                <p>Get the result of an AI request:</p>
+                <code>result(1, 'script0')</code>
+                <h3>Combined:</h3>
+            </article>
+        </section>
     </main>
     <footer></footer>
 
     <script>
         // Initialize CodeMirror
-        const codeMirrorEditor = CodeMirror.fromTextArea(document.getElementById("code"), {
+        const codeEditor0 = CodeMirror.fromTextArea(document.getElementById("code"), {
             lineNumbers: true,
             mode: "javascript",
             autoCloseBrackets: true,
         });
 
-
-
         let devMode = true;
+        let array = [] //is this req?
 
-        const initialMessages = [
+        let textAreaNr = 0
+
+        let scriptHashTable = {}
+        let scripts = [['script0', 'codeEditor0']]
+        scriptHashTable[scripts[0][0]] = scripts[0][1]
+        let scriptHolder = []
+        let scriptHolderReferenceTable = { 'script0': 0 }
+        let initialMessages = [
             {
                 role: "system",
-                content:
-                    "you are an animal expert, giving detailed explanations of animals",
+                content: "You are a helpful assistant, an expert in health, wellbeing, and performance"
             },
             {
                 role: "assistant",
-                content: "hi, what animal do you want to discuss?",
+                content: ""
             },
-            { role: "user", content: { type: "text", content: "input" } },
-            { role: "function", content: "textToImage" },
-            { role: "function", content: "imageToText" },
             {
-                role: "assistant",
-                content: "Tell me about what kind of animals you like",
+                role: "user",
+                content: { content: 'input', type: 'text' }
             },
-            { role: "user", content: { type: "image", content: "input" } },
-            { role: "user", content: "What animals are similar to this?" },
-            { role: "function", content: "imageToText", },
-            { role: "assistant", content: "Thank you for this conversation!" }
-        ];
+            {
+                role: "function",
+                content: "textToText"
+            }
+        ]
 
-        codeMirrorEditor.setValue(formatArrayAsJS(initialMessages))
+
+
+
+        codeEditor0.setValue(formatArrayAsJS(initialMessages))
 
         const hashtable = {
             textToText: foundry.textToText,
@@ -117,15 +152,96 @@
             models: foundry.models,
         };
 
+        array = initialMessages
+        scriptHolder = [initialMessages]
 
-        async function run(array) {
+
+        // function steps2({ start, end, script = document.querySelector('#input0').value }) {
+        //     arr = eval(scriptHashTable[script].getValue())
+
+        //     //this wont work because we cannot retrieve the array from the dev mode. If we do, we wont be able to see the changes made
+        //     //dynamically to the array.
+
+        //     if (q) {
+        //         return arr.slice(i, q)
+        //     } else if (i) {
+        //         return arr.slice(i)
+        //     } else return arr.slice(0)
+        // }
+
+
+        // //function that allows users to get a section of the array
+        function steps({ start, end, scriptName = scripts[0][0] }) {
+            let arr = scriptHolder[scriptHolderReferenceTable[scriptName]]
+            if (!arr) { return 'error' }
+            if (end) {
+                return arr.slice(start, end)
+            } else if (start) {
+                return arr.slice(start)
+            } else return arr.slice(0)
+        }
+
+        //function that allows users to get the result of an AI request
+        function result(i, scriptName = scripts[0][0]) {
+            if (typeof i === 'object') { //also allow object to be passed
+                scriptName = i.scriptName
+                i = i.start
+            }
+            let arr = scriptHolder[scriptHolderReferenceTable[scriptName]]
+            if (!arr) { return 'error' }
+            if (arr[i]?.response) {
+                return arr[i].response
+            } else {
+                return "error"
+            }
+        }
+
+        //function that allows users the retreive the content (whether this is the results of a user input or not)
+        //of an element in the main array
+        function content(i, scriptName = scripts[0][0]) {
+            console.log(i, scriptName)
+            if (typeof i === 'object') { //also allow object to be passed
+                scriptName = i.scriptName
+                i = i.start
+            }
+            let arr = scriptHolder[scriptHolderReferenceTable[scriptName]]
+            if (!arr) { return 'error' }
+            if (arr[i]?.content) {
+                return arr[i].content
+            } else {
+                return "error"
+            }
+        }
+
+        let shouldStop = false
+
+        function stop() {
+            shouldStop = true
+            document.querySelector('#stop').setAttribute('hidden', '')
+            document.querySelector('#show').innerHTML = ""
+            document.querySelector('#userInput').value = ""
+            document.querySelector('#userInput').setAttribute('type', 'hidden')
+            document.querySelector('#btn').setAttribute('hidden', '')
+        }
+
+        async function run(scriptName) {
+            // let array1 = []
+            let editor = eval(scriptHashTable[scriptName])
+
             try {
-                array = eval(codeMirrorEditor.getValue())
+                // array1 = eval(codeMirrorEditor.getValue())
+                array = eval(editor.getValue())
+                console.log(array)
 
-            } catch {
+            } catch (err) {
+                console.error(err)
                 document.querySelector('#show').insertAdjacentHTML('beforeend', `<p class="pico-color-red-500">System: An error occured</p>`)
                 return
             }
+
+            // eval(`array1 = array`)
+            // console.log(array1)
+
 
             const systemPrompt = array[0].role === "system" ? array[0].content : ""
             const startCounter = array[0].role === "system" ? 1 : 0
@@ -133,10 +249,27 @@
             let latestImage, latestSound, latestMessage
 
             for (let i = startCounter; i < array.length; i++) {
+                if (shouldStop) { shouldStop = false; return }
+
+                //the functions that may be present in the array need to run again every cycle
+                //for them to retreive the most recent data
+                //to prevent results to be removed by replacing them with the user-specified prompts'
+                //only the parts of the array that has not yet been used is updated
+                let updatedArray = eval(editor.getValue())
+
+                for (let q = i; q < array.length; q++) {
+                    array[q] = updatedArray[q]
+                    scriptHolder[scriptHolderReferenceTable[scriptName]][q] = updatedArray[q] //this corr?
+                    console.log('scriptHolder:', scriptHolder)
+                }
+
                 if (array[i].role === "function") {
+                    // console.log(array1)
                     document.querySelector('#progress').removeAttribute('hidden')
                     let response = await hashtable[array[i].content]({ api_token, image: latestImage, file: latestSound, prompt: latestMessage, systemPrompt, logging: false, ...array[i] })
                     document.querySelector('#progress').setAttribute('hidden', "")
+
+                    if (shouldStop) { shouldStop = false; return }
 
                     if (array[i].content === "textToImage") {
                         latestImage = response
@@ -146,15 +279,47 @@
                         latestSound = response
                         document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>Assistant: </p><audio controls src="${response}" />`)
                     } else if (array[i].content === "soundToText") {
+                        //
+                        //
+                        //  HUH --> add other functions
+                        //
+                        //
                     } else {
                         document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>Assistant: ${response}</p>`)
                         latestMessage = response
                     }
+
+                    array[i] = { ...array[i], response: response }
+                    scriptHolder[scriptHolderReferenceTable[scriptName]][i] = { ...array[i], response: response }
+                }
+                else if (array[i].role === "condition" && array[i].content) {
+                    console.log(array[i].role)
+                    // if (eval(array[i].content)) {
+                    //     run(array[i].true)
+                    //     break
+                    // } else {
+                    //     run(array[i].false)
+                    //     break
+                    // }
+
+                    try {
+                        if (eval(array[i].content)) {
+                            run(array[i].true)
+                            break
+                        } else {
+                            run(array[i].false)
+                            break
+                        }
+                    } catch (err) {
+                        document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>Error: ${err} - It is possible that the condition you provided is not valid JavaScript</p>`)
+                        console.error(err)
+                    }
+
                 }
                 else if (array[i].content.content === "input") {
                     let msg = await waitForUserInput(array[i].content.type)
                     // array[i].content.content = msg
-                    if (array[i].content.type === 'text') { latestMessage = msg; document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>${array[i].role}: ${msg}</p>`) }
+                    if (array[i].content.type === 'text') { latestMessage = msg; document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>${array[i].role}: ${msg}</p>`); array[i].content = msg; scriptHolder[scriptHolderReferenceTable[scriptName]][i].content = msg }
                     if (array[i].content.type === 'image') { latestImage = msg; document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>${array[i].role}:</p><img src="${msg}" />`) }
                     if (array[i].content.type === 'sound' || array[i].content.type === 'audio') { latestSound = msg; document.querySelector('#show').insertAdjacentHTML('beforeend', `<p>${array[i].role}:</p><audio controls src="${msg}" />`) }
                 } else {
@@ -163,7 +328,9 @@
                 }
                 window.scrollTo(0, document.body.scrollHeight)
             }
+            document.querySelector('#stop').setAttribute('hidden', '')
         }
+
 
         function waitForUserInput(type) {
             return new Promise((resolve) => {
@@ -189,15 +356,34 @@
             })
         }
 
+
         function start() {
+            //update interface
             document.querySelector('#start').innerHTML = 'Restart'
             document.querySelector('#start').setAttribute('class', 'pico-background-red-500')
             document.querySelector('#show').innerHTML = ""
             document.querySelector('#userInput').value = ""
             document.querySelector('#userInput').setAttribute('type', 'hidden')
             document.querySelector('#btn').setAttribute('hidden', '')
+            document.querySelector('#stop').removeAttribute('hidden')
 
-            run(initialMessages)
+
+            for (let i = 0; i < scripts.length; i++) {
+                //attempt to prepare scriptholder with objects, but for now there is no way to know the length of each script array
+                scriptHolder[i] = [{ response: 'error', content: 'error' }]
+            }
+
+            //fill scriptHolder array
+            for (let i = 0; i < scripts.length; i++) {
+                scriptHolderReferenceTable[scripts[i][0]] = i
+                // scriptHolder[i] = []
+                scriptHolder[i] = eval(eval(scripts[i][1]).getValue())
+            }
+
+            console.log('scriptholder: ', scriptHolder)
+
+            // start
+            run('script0')
         }
 
         //Allow pressing enter to send input
@@ -242,19 +428,108 @@
   ];`;
         }
 
+        //update this to also check other scripts
         function checkArray() {
             try {
-                eval(codeMirrorEditor.getValue())
+                eval(codeEditor0.getValue())
                 document.querySelector('#showError').innerHTML = '<p>No Error</p>'
-                return eval(codeMirrorEditor.getValue())
+                return // eval(codeMirrorEditor.getValue())
             } catch (err) {
                 console.error(err)
                 document.querySelector('#showError').innerHTML = `<p class="pico-color-red-500">${err}</p>`
             }
         }
 
+        //Is this even needed?
+        // Listen for changes in the code editor and update array1
+        codeEditor0.on('change', function (instance, changeObj) {
+            try { array = eval(codeEditor0.getValue()) } catch (error) { }
+        });
 
 
+
+
+    </script>
+    <script>
+
+
+        function addScript() {
+            textAreaNr += 1
+
+            document.querySelector('#devView').insertAdjacentHTML('beforeend', `<div role="group"><h3>Script Name: </h3><input value='script${textAreaNr}' name='${textAreaNr}' onchange="scriptNameChanger(event)" id=input${textAreaNr} type='text'  ></input></div><textarea id="code${textAreaNr}" name="code${textAreaNr}">
+            </textarea>`)
+
+            eval(`codeEditor${textAreaNr} = CodeMirror.fromTextArea(document.getElementById("code${textAreaNr}"), {
+                lineNumbers: true,
+                mode: "javascript",
+                autoCloseBrackets: true,
+            });` )
+
+            scripts[textAreaNr] = [`script${textAreaNr}`, `codeEditor${textAreaNr}`]
+            scriptHashTable[scripts[textAreaNr][0]] = scripts[textAreaNr][1]
+
+        }
+
+        //still add error handling if multiple scripts have the same name
+        function scriptNameChanger(event) {
+            console.log(event.target.name)
+
+            scripts[event.target.name] = [event.target.value, `codeEditor${event.target.name}`]
+            scriptHashTable = {}
+            for (let i = 0; i < scripts.length; i++) {
+
+                if (scripts[i][0]) {
+                    scriptHashTable[scripts[i][0]] = scripts[i][1]
+                }
+            }
+            console.log(scriptHashTable)
+        }
+
+    </script>
+    <script>
+        //example script that shows what is possible and what isn't
+
+        //         [
+        //   {
+        //     role: 'assistant',
+        //     content: 'Hi, how was your birthday'
+        //   },
+        //   {
+        //     role: 'user',
+        //     content: {type: 'text', content: 'input'}
+        //   },
+        //   {
+        //     role: 'function',
+        //     content: 'textToText',
+        //     messages: [...steps(0,2)]
+        //   },
+        //   {
+        //     role: 'assistant',
+        //     content: 'Tell me more about your presents'
+        //   },
+        //    {
+        //     role: 'user',
+        //     content: {type: 'text', content: 'input'}
+        //   },
+        //      {
+        //     role: 'assistant',
+        //     content: 'Let me create an image of this'
+        //   },
+        //      {
+        //     role: 'function',
+        //     content: 'textToImage',
+        //     prompt: `Image of birthday: ${content(1)}, ${content(4)}}`
+        //   },{
+        //     role: 'assistant',
+        //     content: 'I hope you like the image. Thank you for this conversation!'
+        //   },{
+        //     role: 'example',
+        //     content: result(2)
+        //   },{
+        //     role: 'example',
+        //     content: result(6)
+        //   }
+        // ]
     </script>
 </body>
 
